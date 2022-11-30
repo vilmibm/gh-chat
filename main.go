@@ -23,30 +23,20 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	response := struct{ Login string }{}
-	err = client.Get("user", &response)
-	if err != nil {
-		panic(err)
-	}
-	username := response.Login
 
-	var gistOwner string
 	var gistID string
 	var enter bool
 	if len(os.Args) == 1 {
-		gistOwner = username
 		// TODO actually create gist
 		gistID = "b6f867cbdd5dcb3e08fca1323fae4db8"
-		fmt.Printf("created chat room. tell others to run `gh chat %s/%s`\n",
-			gistOwner, gistID)
+		fmt.Printf("created chat room. tell others to run `gh chat %s`\n", gistID)
 		survey.AskOne(&survey.Confirm{
 			Message: "continue into chat room?",
 			Default: true,
 		}, &enter)
-		defer cleanupGist(gistOwner, gistID)
+		defer cleanupGist(gistID)
 	} else {
 		split := strings.Split(os.Args[1], "/")
-		gistOwner = split[0]
 		gistID = split[1]
 		enter = true
 	}
@@ -136,6 +126,6 @@ func main() {
 	}
 }
 
-func cleanupGist(gistOwner, gistID string) {
+func cleanupGist(gistID string) {
 	// TODO delete gist
 }
