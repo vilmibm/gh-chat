@@ -95,10 +95,39 @@ func main() {
 	app.SetRoot(flex, true)
 
 	go func() {
+		seen := []int{}
+
 		for true {
 			// TODO poll gist comments
+			resp := []struct {
+				Body string
+				ID   int `json:"id"`
+				User struct {
+					Login string
+				}
+			}{}
+			err := client.Get(fmt.Sprintf("gists/%s/comments", gistID), &resp)
+			if err != nil {
+				panic(err)
+			}
 
-			time.Sleep(time.Second * 5)
+			for _, c := range resp {
+				found := false
+				for _, id := range seen {
+					if c.ID == id {
+						found = true
+						break
+					}
+				}
+				if found {
+					continue
+				}
+				msgView.Write([]byte(fmt.Sprintf("%s: %s\n", c.User.Login, c.Body)))
+				app.ForceDraw()
+				seen = append(seen, c.ID)
+			}
+
+			time.Sleep(time.Second * 4)
 		}
 	}()
 
