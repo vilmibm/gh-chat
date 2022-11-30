@@ -2,11 +2,9 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
-	"path"
-	"strconv"
 	"strings"
 	"time"
 
@@ -21,6 +19,8 @@ import (
 	has to be transmitted out-of-band to other users. the upshot of this is
 	it's easier to have more than 2 people in a chat. downside is how it's
 	falsifiable, but i am ok with that for a stupid hackathon.
+
+	ok i'm ridiculous; there is no need to use git. i can just comment on gists. there is no security at all.
 */
 
 func main() {
@@ -55,31 +55,11 @@ func main() {
 		gistID = split[1]
 	}
 
-	cloneDir := path.Join(os.TempDir(), gistID)
-
 	if !enter {
 		return
 	}
 
-	gistURL := fmt.Sprintf("https://gist.github.com/%s/%s", gistOwner, gistID)
-	cloneArgs := []string{"clone", gistURL, cloneDir}
-	cloneCmd := exec.Command("git", cloneArgs...)
-	cloneCmd.Stderr = os.Stderr
-	err = cloneCmd.Run()
-	if err != nil {
-		panic(err)
-	}
-	defer cleanupClone(cloneDir)
-
-	/*
-		msgBuffs := map[string]io.Reader{
-			gistOwner: ownerBuff,
-		}
-	*/
-
 	app := tview.NewApplication()
-
-	mw := newMsgWriter(cloneDir, username)
 
 	msgView := tview.NewTextView()
 	input := tview.NewInputField()
@@ -87,8 +67,24 @@ func main() {
 		if key != tcell.KeyEnter {
 			return
 		}
-		mw.Write(input.GetText())
-		//_, _ = msgView.Write([]byte(input.GetText()))
+		args := &struct {
+			GistID string `json:"gist_id"`
+			Body   string `json:"body"`
+		}{
+			GistID: gistID,
+			Body:   input.GetText(),
+		}
+		response := &struct{}{}
+		jargs, err := json.Marshal(args)
+		if err != nil {
+			panic(err)
+		}
+
+		err = client.Post(fmt.Sprintf("gists/%s/comments", gistID), bytes.NewBuffer(jargs), &response)
+		if err != nil {
+			panic(err)
+		}
+		input.SetText("")
 	})
 
 	flex := tview.NewFlex()
@@ -98,47 +94,10 @@ func main() {
 
 	app.SetRoot(flex, true)
 
-	lastCheck := time.Now().Unix()
-
 	go func() {
 		for true {
-			pullCmd := exec.Command("git", "pull", "--rebase")
-			pullCmd.Dir = cloneDir
-			err = pullCmd.Run()
-			if err != nil {
-				panic(err)
-			}
-			files, err := os.ReadDir(cloneDir)
-			if err != nil {
-				panic(err)
-			}
+			// TODO poll gist comments
 
-			for _, f := range files {
-				if strings.HasSuffix(f.Name(), ".chat") {
-					fullPath := path.Join(cloneDir, f.Name())
-					chatContents, err := os.ReadFile(fullPath)
-					if err != nil {
-						panic(err)
-					}
-					lines := strings.Split(string(chatContents), "\n")
-					for _, l := range lines {
-						split := strings.SplitN(l, " ", 2)
-						if len(split) != 2 {
-							continue
-						}
-						msg := split[1]
-						when, err := strconv.Atoi(split[0])
-						if err != nil {
-							panic(err)
-						}
-						if int64(when) > lastCheck {
-							un := strings.TrimSuffix(f.Name(), ".chat")
-							msgView.Write([]byte(fmt.Sprintf("%s: %s\n", un, msg)))
-						}
-					}
-				}
-			}
-			lastCheck = time.Now().Unix()
 			time.Sleep(time.Second * 5)
 		}
 	}()
@@ -148,73 +107,6 @@ func main() {
 	}
 }
 
-type msgWriter struct {
-	Username string
-	CloneDir string
-}
-
-func newMsgWriter(cloneDir, username string) *msgWriter {
-	cpath := path.Join(cloneDir, username+".chat")
-	_, err := os.Create(cpath)
-	if err != nil {
-		panic(err)
-	}
-
-	addCmd := exec.Command("git", "add", cpath)
-	addCmd.Dir = cloneDir
-	addCmd.Run()
-
-	commitCmd := exec.Command("git", "commit", "-a", "-m", "TODO")
-	commitCmd.Dir = cloneDir
-	commitCmd.Run()
-
-	pushCmd := exec.Command("git", "push")
-	pushCmd.Dir = cloneDir
-	pushCmd.Run()
-
-	return &msgWriter{
-		CloneDir: cloneDir,
-		Username: username,
-	}
-}
-
-func (w *msgWriter) Write(text string) {
-	buff, err := os.Open(path.Join(w.CloneDir, w.Username+".chat"))
-	if err != nil {
-		panic(err)
-	}
-	defer buff.Close()
-	msg := fmt.Sprintf("%d %s\n", time.Now().Unix(), text)
-	buff.Write([]byte(msg))
-	commitCmd := exec.Command("git", "commit", "-a", "-m", "TODO")
-	commitCmd.Dir = w.CloneDir
-	buf := &bytes.Buffer{}
-	commitCmd.Stderr = buf
-	commitCmd.Stdout = buf
-	err = commitCmd.Run()
-	if err != nil {
-		panic(buf.String())
-	}
-
-	pullCmd := exec.Command("git", "pull", "--rebase")
-	pullCmd.Dir = w.CloneDir
-	err = pullCmd.Run()
-	if err != nil {
-		panic(err)
-	}
-
-	pushCmd := exec.Command("git", "push")
-	pushCmd.Dir = w.CloneDir
-	err = pushCmd.Run()
-	if err != nil {
-		panic(err)
-	}
-}
-
-func cleanupClone(cloneDir string) {
-	os.RemoveAll(cloneDir)
-}
-
 func cleanupGist(gistOwner, gistID string) {
-	// TODO delete gist
+	// TODO
 }
