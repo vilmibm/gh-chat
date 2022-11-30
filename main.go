@@ -21,7 +21,7 @@ type gistFile struct {
 	Content string `json:"content"`
 }
 
-func main() {
+func _main(args []string) error {
 	client, err := gh.RESTClient(nil)
 	if err != nil {
 		panic(err)
@@ -34,7 +34,7 @@ func main() {
 
 	var gistID string
 	var enter bool
-	if len(os.Args) == 1 {
+	if len(args) == 0 {
 		body, err := json.Marshal(struct {
 			Files  map[string]gistFile `json:"files"`
 			Public bool                `json:"public"`
@@ -60,13 +60,13 @@ func main() {
 		}, &enter)
 		defer cleanupGist(gistID)
 	} else {
-		split := strings.Split(os.Args[1], "/")
-		gistID = split[1]
+		split := strings.Split(args[0], "/")
+		gistID = split[0]
 		enter = true
 	}
 
 	if !enter {
-		return
+		return nil
 	}
 
 	app := tview.NewApplication()
@@ -148,8 +148,28 @@ func main() {
 	if err := app.Run(); err != nil {
 		panic(err)
 	}
+	return nil
+}
+
+func main() {
+	args := []string{}
+	if len(os.Args) > 1 {
+		args = os.Args[1:]
+	}
+	err := _main(args)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+	}
 }
 
 func cleanupGist(gistID string) {
-	// TODO delete gist
+	client, err := gh.RESTClient(nil)
+	if err != nil {
+		panic(err)
+	}
+
+	err = client.Delete(fmt.Sprintf("gists/%s", gistID), nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to cleanup gist %s: %s", gistID, err.Error())
+	}
 }
