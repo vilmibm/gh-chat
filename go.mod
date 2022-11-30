@@ -5,6 +5,7 @@ go 1.18
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.6
 	github.com/cli/go-gh v1.0.0
+	github.com/gdamore/tcell v1.4.0
 	github.com/rivo/tview v0.0.0-20221128165837-db36428c92d9
 )
 
