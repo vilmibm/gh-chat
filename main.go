@@ -16,7 +16,6 @@ import (
 
 // TODO add interrupt code to gh in a branch
 // TODO consider protocol approach so things like invites can be handled accordingly
-// TODO unfuck error handling lol
 type gistFile struct {
 	Content string `json:"content"`
 }
@@ -24,7 +23,7 @@ type gistFile struct {
 func _main(args []string) error {
 	client, err := gh.RESTClient(nil)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("failed to create client: %w", err)
 	}
 
 	files := map[string]gistFile{}
@@ -43,22 +42,26 @@ func _main(args []string) error {
 			Public: false,
 		})
 		if err != nil {
-			panic(err)
+			return fmt.Errorf("could not marshal gist data: %w", err)
 		}
 		resp := struct {
 			ID string `json:"id"`
 		}{}
 		err = client.Post("gists", bytes.NewReader(body), &resp)
 		if err != nil {
-			panic(err)
+			return fmt.Errorf("failed to create gist: %w", err)
 		}
 		gistID = resp.ID
+		defer cleanupGist(gistID)
+
 		fmt.Printf("created chat room. others can join with `gh chat %s`\n", gistID)
-		survey.AskOne(&survey.Confirm{
+		err = survey.AskOne(&survey.Confirm{
 			Message: "continue into chat room?",
 			Default: true,
 		}, &enter)
-		defer cleanupGist(gistID)
+		if err != nil {
+			return fmt.Errorf("could not prompt: %w", err)
+		}
 	} else {
 		split := strings.Split(args[0], "/")
 		gistID = split[0]
@@ -92,12 +95,12 @@ func _main(args []string) error {
 		response := &struct{}{}
 		jargs, err := json.Marshal(args)
 		if err != nil {
-			panic(err)
+			msgView.Write([]byte(fmt.Sprintf("system error: %s\n", err.Error())))
 		}
 
 		err = client.Post(fmt.Sprintf("gists/%s/comments", gistID), bytes.NewBuffer(jargs), &response)
 		if err != nil {
-			panic(err)
+			msgView.Write([]byte(fmt.Sprintf("system error: %s\n", err.Error())))
 		}
 		input.SetText("")
 	})
@@ -122,7 +125,9 @@ func _main(args []string) error {
 			}{}
 			err := client.Get(fmt.Sprintf("gists/%s/comments", gistID), &resp)
 			if err != nil {
-				panic(err)
+				msgView.Write([]byte(fmt.Sprintf("system error: %s\n", err.Error())))
+				app.ForceDraw()
+				continue
 			}
 
 			for _, c := range resp {
@@ -146,8 +151,9 @@ func _main(args []string) error {
 	}()
 
 	if err := app.Run(); err != nil {
-		panic(err)
+		return fmt.Errorf("tview error: %w", err)
 	}
+
 	return nil
 }
 
@@ -165,7 +171,7 @@ func main() {
 func cleanupGist(gistID string) {
 	client, err := gh.RESTClient(nil)
 	if err != nil {
-		panic(err)
+		fmt.Fprintf(os.Stderr, "failed to create client during cleanup: %s", err.Error())
 	}
 
 	err = client.Delete(fmt.Sprintf("gists/%s", gistID), nil)
