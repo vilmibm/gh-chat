@@ -10,6 +10,7 @@ import (
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/cli/go-gh"
+	"github.com/cli/go-gh/pkg/api"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -20,11 +21,45 @@ type gistFile struct {
 	Content string `json:"content"`
 }
 
+type gistClient struct {
+	client api.RESTClient
+	id     string
+}
+
+func newGistClient(client api.RESTClient, gistID string) *gistClient {
+	return &gistClient{
+		client: client,
+		id:     gistID,
+	}
+}
+
+func (c *gistClient) AddComment(text string) error {
+	args := &struct {
+		GistID string `json:"gist_id"`
+		Body   string `json:"body"`
+	}{
+		GistID: c.id,
+		Body:   text,
+	}
+	jargs, err := json.Marshal(args)
+	if err != nil {
+		return err
+	}
+
+	return c.client.Post(fmt.Sprintf("gists/%s/comments", c.id), bytes.NewBuffer(jargs), nil)
+}
+
 func _main(args []string) error {
 	client, err := gh.RESTClient(nil)
 	if err != nil {
 		return fmt.Errorf("failed to create client: %w", err)
 	}
+	response := struct{ Login string }{}
+	err = client.Get("user", &response)
+	if err != nil {
+		panic(err)
+	}
+	currentUsername := response.Login
 
 	files := map[string]gistFile{}
 	files["chat"] = gistFile{
@@ -63,14 +98,15 @@ func _main(args []string) error {
 			return fmt.Errorf("could not prompt: %w", err)
 		}
 	} else {
-		split := strings.Split(args[0], "/")
-		gistID = split[0]
+		gistID = args[0]
 		enter = true
 	}
 
 	if !enter {
 		return nil
 	}
+
+	gc := newGistClient(client, gistID)
 
 	app := tview.NewApplication()
 
@@ -80,29 +116,30 @@ func _main(args []string) error {
 		if key != tcell.KeyEnter {
 			return
 		}
+		defer input.SetText("")
 		txt := input.GetText()
 		if strings.HasPrefix(txt, "/") {
-			// TODO handle / commands
+			split := strings.SplitN(txt, " ", 2)
+			switch split[0] {
+			case "/quit":
+				app.Stop()
+			case "/invite":
+				err = gc.AddComment(fmt.Sprintf("~ invited @%s to chat", split[1]))
+				if err != nil {
+					msgView.Write([]byte(fmt.Sprintf("system error: %s\n", err.Error())))
+				}
+			case "/me":
+				err = gc.AddComment(fmt.Sprintf("~ %s %s", currentUsername, split[1]))
+				if err != nil {
+					msgView.Write([]byte(fmt.Sprintf("system error: %s\n", err.Error())))
+				}
+			}
 			return
 		}
-		args := &struct {
-			GistID string `json:"gist_id"`
-			Body   string `json:"body"`
-		}{
-			GistID: gistID,
-			Body:   input.GetText(),
-		}
-		response := &struct{}{}
-		jargs, err := json.Marshal(args)
+		err = gc.AddComment(txt)
 		if err != nil {
 			msgView.Write([]byte(fmt.Sprintf("system error: %s\n", err.Error())))
 		}
-
-		err = client.Post(fmt.Sprintf("gists/%s/comments", gistID), bytes.NewBuffer(jargs), &response)
-		if err != nil {
-			msgView.Write([]byte(fmt.Sprintf("system error: %s\n", err.Error())))
-		}
-		input.SetText("")
 	})
 
 	flex := tview.NewFlex()
@@ -141,7 +178,11 @@ func _main(args []string) error {
 				if found {
 					continue
 				}
-				msgView.Write([]byte(fmt.Sprintf("%s: %s\n", c.User.Login, c.Body)))
+				msg := c.Body + "\n"
+				if !strings.HasPrefix(msg, "~") {
+					msg = fmt.Sprintf("%s: %s", c.User.Login, msg)
+				}
+				msgView.Write([]byte(msg))
 				app.ForceDraw()
 				seen = append(seen, c.ID)
 			}
