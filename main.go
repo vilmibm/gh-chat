@@ -16,7 +16,6 @@ import (
 )
 
 // TODO add interrupt code to gh in a branch
-// TODO consider protocol approach so things like invites can be handled accordingly
 type gistFile struct {
 	Content string `json:"content"`
 }
@@ -124,7 +123,8 @@ func _main(args []string) error {
 			case "/quit":
 				app.Stop()
 			case "/invite":
-				err = gc.AddComment(fmt.Sprintf("~ invited @%s to chat", split[1]))
+				err = gc.AddComment(
+					fmt.Sprintf("~ hey @%s come chat ^_^ `gh ext install vilmibm/gh-chat && gh chat %s`", split[1], gistID))
 				if err != nil {
 					msgView.Write([]byte(fmt.Sprintf("system error: %s\n", err.Error())))
 				}
