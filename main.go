@@ -17,6 +17,9 @@ import (
 // TODO add interrupt code to gh in a branch
 // TODO consider protocol approach so things like invites can be handled accordingly
 // TODO unfuck error handling lol
+type gistFile struct {
+	Content string `json:"content"`
+}
 
 func main() {
 	client, err := gh.RESTClient(nil)
@@ -24,12 +27,33 @@ func main() {
 		panic(err)
 	}
 
+	files := map[string]gistFile{}
+	files["chat"] = gistFile{
+		Content: "lol hey",
+	}
+
 	var gistID string
 	var enter bool
 	if len(os.Args) == 1 {
-		// TODO actually create gist
-		gistID = "b6f867cbdd5dcb3e08fca1323fae4db8"
-		fmt.Printf("created chat room. tell others to run `gh chat %s`\n", gistID)
+		body, err := json.Marshal(struct {
+			Files  map[string]gistFile `json:"files"`
+			Public bool                `json:"public"`
+		}{
+			Files:  files,
+			Public: false,
+		})
+		if err != nil {
+			panic(err)
+		}
+		resp := struct {
+			ID string `json:"id"`
+		}{}
+		err = client.Post("gists", bytes.NewReader(body), &resp)
+		if err != nil {
+			panic(err)
+		}
+		gistID = resp.ID
+		fmt.Printf("created chat room. others can join with `gh chat %s`\n", gistID)
 		survey.AskOne(&survey.Confirm{
 			Message: "continue into chat room?",
 			Default: true,
