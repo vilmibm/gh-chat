@@ -14,14 +14,9 @@ import (
 	"github.com/rivo/tview"
 )
 
-/*
-	i have accepted the limitation that this command creates a room that then
-	has to be transmitted out-of-band to other users. the upshot of this is
-	it's easier to have more than 2 people in a chat. downside is how it's
-	falsifiable, but i am ok with that for a stupid hackathon.
-
-	ok i'm ridiculous; there is no need to use git. i can just comment on gists. there is no security at all.
-*/
+// TODO add interrupt code to gh in a branch
+// TODO consider protocol approach so things like invites can be handled accordingly
+// TODO unfuck error handling lol
 
 func main() {
 	client, err := gh.RESTClient(nil)
@@ -53,6 +48,7 @@ func main() {
 		split := strings.Split(os.Args[1], "/")
 		gistOwner = split[0]
 		gistID = split[1]
+		enter = true
 	}
 
 	if !enter {
@@ -65,6 +61,11 @@ func main() {
 	input := tview.NewInputField()
 	input.SetDoneFunc(func(key tcell.Key) {
 		if key != tcell.KeyEnter {
+			return
+		}
+		txt := input.GetText()
+		if strings.HasPrefix(txt, "/") {
+			// TODO handle / commands
 			return
 		}
 		args := &struct {
@@ -98,7 +99,6 @@ func main() {
 		seen := []int{}
 
 		for true {
-			// TODO poll gist comments
 			resp := []struct {
 				Body string
 				ID   int `json:"id"`
@@ -137,5 +137,5 @@ func main() {
 }
 
 func cleanupGist(gistOwner, gistID string) {
-	// TODO
+	// TODO delete gist
 }
