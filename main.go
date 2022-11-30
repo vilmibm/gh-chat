@@ -20,13 +20,23 @@ type gistFile struct {
 	Content string `json:"content"`
 }
 
+type gistComment struct {
+	Body string
+	ID   int `json:"id"`
+	User struct {
+		Login string
+	}
+}
+
 type gistClient struct {
+	seen   []int
 	client api.RESTClient
 	id     string
 }
 
 func newGistClient(client api.RESTClient, gistID string) *gistClient {
 	return &gistClient{
+		seen:   []int{},
 		client: client,
 		id:     gistID,
 	}
@@ -46,6 +56,35 @@ func (c *gistClient) AddComment(text string) error {
 	}
 
 	return c.client.Post(fmt.Sprintf("gists/%s/comments", c.id), bytes.NewBuffer(jargs), nil)
+}
+
+func (c *gistClient) GetNewComments() ([]string, error) {
+	resp := []gistComment{}
+	err := c.client.Get(fmt.Sprintf("gists/%s/comments", c.id), &resp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get comments: %w", err)
+	}
+
+	msgs := []string{}
+	for _, comment := range resp {
+		found := false
+		for _, id := range c.seen {
+			if comment.ID == id {
+				found = true
+				break
+			}
+		}
+		if found {
+			continue
+		}
+		msg := comment.Body + "\n"
+		if !strings.HasPrefix(msg, "~") {
+			msg = fmt.Sprintf("%s: %s", comment.User.Login, msg)
+		}
+		msgs = append(msgs, msg)
+		c.seen = append(c.seen, comment.ID)
+	}
+	return msgs, nil
 }
 
 func _main(args []string) error {
@@ -110,6 +149,13 @@ func _main(args []string) error {
 	app := tview.NewApplication()
 
 	msgView := tview.NewTextView()
+
+	loadNewComments := func(msgs []string) {
+		for _, m := range msgs {
+			msgView.Write([]byte(m))
+		}
+		app.ForceDraw()
+	}
 	input := tview.NewInputField()
 	input.SetDoneFunc(func(key tcell.Key) {
 		if key != tcell.KeyEnter {
@@ -128,11 +174,21 @@ func _main(args []string) error {
 				if err != nil {
 					msgView.Write([]byte(fmt.Sprintf("system error: %s\n", err.Error())))
 				}
+				msgs, err := gc.GetNewComments()
+				if err != nil {
+					msgView.Write([]byte(fmt.Sprintf("system error: %s\n", err.Error())))
+				}
+				go loadNewComments(msgs)
 			case "/me":
 				err = gc.AddComment(fmt.Sprintf("~ %s %s", currentUsername, split[1]))
 				if err != nil {
 					msgView.Write([]byte(fmt.Sprintf("system error: %s\n", err.Error())))
 				}
+				msgs, err := gc.GetNewComments()
+				if err != nil {
+					msgView.Write([]byte(fmt.Sprintf("system error: %s\n", err.Error())))
+				}
+				go loadNewComments(msgs)
 			}
 			return
 		}
@@ -140,6 +196,11 @@ func _main(args []string) error {
 		if err != nil {
 			msgView.Write([]byte(fmt.Sprintf("system error: %s\n", err.Error())))
 		}
+		msgs, err := gc.GetNewComments()
+		if err != nil {
+			msgView.Write([]byte(fmt.Sprintf("system error: %s\n", err.Error())))
+		}
+		go loadNewComments(msgs)
 	})
 
 	flex := tview.NewFlex()
@@ -150,42 +211,15 @@ func _main(args []string) error {
 	app.SetRoot(flex, true)
 
 	go func() {
-		seen := []int{}
-
 		for true {
-			resp := []struct {
-				Body string
-				ID   int `json:"id"`
-				User struct {
-					Login string
-				}
-			}{}
-			err := client.Get(fmt.Sprintf("gists/%s/comments", gistID), &resp)
+			msgs, err := gc.GetNewComments()
 			if err != nil {
 				msgView.Write([]byte(fmt.Sprintf("system error: %s\n", err.Error())))
 				app.ForceDraw()
 				continue
 			}
 
-			for _, c := range resp {
-				found := false
-				for _, id := range seen {
-					if c.ID == id {
-						found = true
-						break
-					}
-				}
-				if found {
-					continue
-				}
-				msg := c.Body + "\n"
-				if !strings.HasPrefix(msg, "~") {
-					msg = fmt.Sprintf("%s: %s", c.User.Login, msg)
-				}
-				msgView.Write([]byte(msg))
-				app.ForceDraw()
-				seen = append(seen, c.ID)
-			}
+			loadNewComments(msgs)
 
 			time.Sleep(time.Second * 4)
 		}
