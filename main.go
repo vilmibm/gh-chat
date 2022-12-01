@@ -15,7 +15,6 @@ import (
 	"github.com/rivo/tview"
 )
 
-// TODO add interrupt code to gh in a branch
 type gistFile struct {
 	Content string `json:"content"`
 }
@@ -87,64 +86,40 @@ func (c *gistClient) GetNewComments() ([]string, error) {
 	return msgs, nil
 }
 
-func _main(args []string) error {
-	client, err := gh.RESTClient(nil)
-	if err != nil {
-		return fmt.Errorf("failed to create client: %w", err)
-	}
-	response := struct{ Login string }{}
-	err = client.Get("user", &response)
-	if err != nil {
-		panic(err)
-	}
-	currentUsername := response.Login
+type ChatOpts struct {
+	Client   api.RESTClient
+	Username string
+	GistID   string
+}
 
+func createChat(opts ChatOpts) (string, error) {
 	files := map[string]gistFile{}
 	files["chat"] = gistFile{
 		Content: "lol hey",
 	}
-
-	var gistID string
-	var enter bool
-	if len(args) == 0 {
-		body, err := json.Marshal(struct {
-			Files  map[string]gistFile `json:"files"`
-			Public bool                `json:"public"`
-		}{
-			Files:  files,
-			Public: false,
-		})
-		if err != nil {
-			return fmt.Errorf("could not marshal gist data: %w", err)
-		}
-		resp := struct {
-			ID string `json:"id"`
-		}{}
-		err = client.Post("gists", bytes.NewReader(body), &resp)
-		if err != nil {
-			return fmt.Errorf("failed to create gist: %w", err)
-		}
-		gistID = resp.ID
-		defer cleanupGist(gistID)
-
-		fmt.Printf("created chat room. others can join with `gh chat %s`\n", gistID)
-		err = survey.AskOne(&survey.Confirm{
-			Message: "continue into chat room?",
-			Default: true,
-		}, &enter)
-		if err != nil {
-			return fmt.Errorf("could not prompt: %w", err)
-		}
-	} else {
-		gistID = args[0]
-		enter = true
+	body, err := json.Marshal(struct {
+		Files  map[string]gistFile `json:"files"`
+		Public bool                `json:"public"`
+	}{
+		Files:  files,
+		Public: false,
+	})
+	if err != nil {
+		return "", fmt.Errorf("could not marshal gist data: %w", err)
 	}
-
-	if !enter {
-		return nil
+	resp := struct {
+		ID string `json:"id"`
+	}{}
+	err = opts.Client.Post("gists", bytes.NewReader(body), &resp)
+	if err != nil {
+		return "", fmt.Errorf("failed to create gist: %w", err)
 	}
+	return resp.ID, nil
+}
 
-	gc := newGistClient(client, gistID)
+func joinChat(opts ChatOpts) error {
+	gistID := opts.GistID
+	gc := newGistClient(opts.Client, gistID)
 
 	app := tview.NewApplication()
 
@@ -169,7 +144,7 @@ func _main(args []string) error {
 			case "/quit":
 				app.Stop()
 			case "/invite":
-				err = gc.AddComment(
+				err := gc.AddComment(
 					fmt.Sprintf("~ hey @%s come chat ^_^ `gh ext install vilmibm/gh-chat && gh chat %s`", split[1], gistID))
 				if err != nil {
 					msgView.Write([]byte(fmt.Sprintf("system error: %s\n", err.Error())))
@@ -180,7 +155,7 @@ func _main(args []string) error {
 				}
 				go loadNewComments(msgs)
 			case "/me":
-				err = gc.AddComment(fmt.Sprintf("~ %s %s", currentUsername, split[1]))
+				err := gc.AddComment(fmt.Sprintf("~ %s %s", opts.Username, split[1]))
 				if err != nil {
 					msgView.Write([]byte(fmt.Sprintf("system error: %s\n", err.Error())))
 				}
@@ -192,7 +167,7 @@ func _main(args []string) error {
 			}
 			return
 		}
-		err = gc.AddComment(txt)
+		err := gc.AddComment(txt)
 		if err != nil {
 			msgView.Write([]byte(fmt.Sprintf("system error: %s\n", err.Error())))
 		}
@@ -227,6 +202,63 @@ func _main(args []string) error {
 
 	if err := app.Run(); err != nil {
 		return fmt.Errorf("tview error: %w", err)
+	}
+	return nil
+}
+
+func checkForChat(opts ChatOpts) error {
+	// TODO
+	return nil
+}
+
+func _main(args []string) error {
+	client, err := gh.RESTClient(nil)
+	if err != nil {
+		return fmt.Errorf("failed to create client: %w", err)
+	}
+	response := struct{ Login string }{}
+	err = client.Get("user", &response)
+	if err != nil {
+		panic(err)
+	}
+	currentUsername := response.Login
+
+	opts := &ChatOpts{
+		Client:   client,
+		Username: currentUsername,
+	}
+
+	if len(args) == 0 {
+		gistID, err := createChat(*opts)
+		if err != nil {
+			return err
+		}
+		opts.GistID = gistID
+
+		defer cleanupGist(gistID)
+
+		enter := false
+		fmt.Printf("created chat room. others can join with `gh chat %s`\n", gistID)
+		err = survey.AskOne(&survey.Confirm{
+			Message: "continue into chat room?",
+			Default: true,
+		}, &enter)
+		if err != nil {
+			return fmt.Errorf("could not prompt: %w", err)
+		}
+		if !enter {
+			return nil
+		}
+
+		return joinChat(*opts)
+	} else if len(args) == 1 {
+		switch args[0] {
+		case "check":
+			return checkForChat(*opts)
+		default:
+			opts.GistID = args[0]
+			return joinChat(*opts)
+		}
 	}
 
 	return nil
