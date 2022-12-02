@@ -4,6 +4,8 @@ _being a joke made as part of the GitHub Client Apps hackathon_
 
 somewhere on a list of "terrible ideas for the github cli" is "realtime chat." naturally adding that as a joke has always amused me, so i finally did it.
 
+<img width="911" alt="Screenshot 2022-12-02 120814" src="https://user-images.githubusercontent.com/98482/205377404-20db202d-c9d8-4ec9-a108-d7ec26d24ee3.png">
+
 ## install
 
 `gh ext install vilmibm/gh-chat`
