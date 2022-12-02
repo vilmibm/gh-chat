@@ -181,6 +181,9 @@ func joinChat(opts ChatOpts) error {
 				// this was redunant with their quit message:
 				//msgView.Write([]byte(fmt.Sprintf("aw, %s left ;_;\n", split[1])))
 			} else {
+				if strings.Contains(m, "@"+opts.Username) {
+					fmt.Printf("\a")
+				}
 				msgView.Write([]byte(m))
 			}
 		}
@@ -204,6 +207,9 @@ func joinChat(opts ChatOpts) error {
 	input := tview.NewInputField()
 	input.SetDoneFunc(func(key tcell.Key) {
 		if key != tcell.KeyEnter {
+			return
+		}
+		if len(input.GetText()) == 0 {
 			return
 		}
 		defer input.SetText("")
