@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -155,7 +156,12 @@ func joinChat(opts ChatOpts) error {
 	rw := sync.RWMutex{}
 	present := map[string]bool{}
 
+	stopped := false
+
 	loadNewComments := func(msgs []string) {
+		if stopped {
+			return
+		}
 		for _, m := range msgs {
 			if strings.HasPrefix(m, "LOLJOIN") {
 				split := strings.Split(m, " ")
@@ -164,7 +170,7 @@ func joinChat(opts ChatOpts) error {
 					present[split[1]] = true
 					rw.Unlock()
 				}
-				msgView.Write([]byte(fmt.Sprintf("whoa %s has joined!\n", split[1])))
+				msgView.Write([]byte(fmt.Sprintf("~ whoa %s has joined!\n", split[1])))
 			} else if strings.HasPrefix(m, "LOLPART") {
 				split := strings.Split(m, " ")
 				if len(split) > 1 {
@@ -172,19 +178,25 @@ func joinChat(opts ChatOpts) error {
 					present[split[1]] = false
 					rw.Unlock()
 				}
-				msgView.Write([]byte(fmt.Sprintf("aw, %s left ;_;\n", split[1])))
+				// this was redunant with their quit message:
+				//msgView.Write([]byte(fmt.Sprintf("aw, %s left ;_;\n", split[1])))
 			} else {
 				msgView.Write([]byte(m))
 			}
 		}
-		presentTxt := ""
+		presentNicks := []string{}
 		rw.RLock()
 		for k, v := range present {
 			if v {
-				presentTxt += k + "\n"
+				presentNicks = append(presentNicks, k)
 			}
 		}
 		rw.RUnlock()
+		sort.Strings(presentNicks)
+		presentTxt := ""
+		for _, n := range presentNicks {
+			presentTxt += n + "\n"
+		}
 		nicklist.SetText(presentTxt)
 		msgView.ScrollToEnd()
 		app.ForceDraw()
@@ -221,6 +233,8 @@ func joinChat(opts ChatOpts) error {
 					"system:",
 					"/quit (<message>)",
 					"  leave chat with an optional part message",
+					"/me <msg>",
+					"  do an emote",
 					"/invite <username>",
 					"  invite a github user to the chat. they'll get a notification on github.",
 					"/banner <msg>",
@@ -237,8 +251,10 @@ func joinChat(opts ChatOpts) error {
 					quitMsg = fmt.Sprintf(" (%s)", split[1])
 				}
 
-				gc.AddComment(fmt.Sprintf("~ vilmibm quit%s\n", quitMsg))
+				gc.AddComment(fmt.Sprintf("~ %s quit%s\n", opts.Username, quitMsg))
 				close(cancel)
+				// TODO does this fix the intermittent freeze on quit?
+				stopped = true
 				app.Stop()
 			case "/banner":
 				banner("standard", split[1])
@@ -246,9 +262,12 @@ func joinChat(opts ChatOpts) error {
 				sp := strings.SplitN(split[1], " ", 2)
 				banner(sp[0], sp[1])
 			case "/invite":
-				// TODO support stripping leading @ since i keep doing it
+				username := split[1]
+				if strings.HasPrefix(username, "@") {
+					username = username[1:]
+				}
 				err := gc.AddComment(
-					fmt.Sprintf("~ hey @%s come chat ^_^ `gh ext install vilmibm/gh-chat && gh chat %s`", split[1], gistID))
+					fmt.Sprintf("~ hey @%s come chat ^_^ `gh ext install vilmibm/gh-chat && gh chat %s`", username, gistID))
 				if err != nil {
 					msgView.Write([]byte(fmt.Sprintf("system error: %s\n", err.Error())))
 				}
@@ -281,6 +300,9 @@ func joinChat(opts ChatOpts) error {
 		go loadNewComments(msgs)
 	})
 
+	title := tview.NewTextView()
+	title.SetText("welcome to gh chat. run /help for command info")
+
 	innerFlex := tview.NewFlex()
 	innerFlex.SetDirection(tview.FlexColumn)
 	innerFlex.AddItem(msgView, 0, 5, false)
@@ -288,6 +310,7 @@ func joinChat(opts ChatOpts) error {
 
 	outerFlex := tview.NewFlex()
 	outerFlex.SetDirection(tview.FlexRow)
+	outerFlex.AddItem(title, 1, 1, false)
 	outerFlex.AddItem(innerFlex, 0, 10, false)
 	outerFlex.AddItem(input, 1, 1, true)
 
