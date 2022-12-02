@@ -35,16 +35,18 @@ type gistComment struct {
 }
 
 type gistClient struct {
-	seen   []int
-	client api.RESTClient
-	id     string
+	seen      []int
+	client    api.RESTClient
+	id        string
+	seenmutex *sync.RWMutex
 }
 
 func newGistClient(client api.RESTClient, gistID string) *gistClient {
 	return &gistClient{
-		seen:   []int{},
-		client: client,
-		id:     gistID,
+		seen:      []int{},
+		client:    client,
+		id:        gistID,
+		seenmutex: &sync.RWMutex{},
 	}
 }
 
@@ -66,7 +68,12 @@ func (c *gistClient) AddComment(text string) error {
 
 func (c *gistClient) GetNewComments() ([]string, error) {
 	resp := []gistComment{}
-	err := c.client.Get(fmt.Sprintf("gists/%s/comments", c.id), &resp)
+	perPage := 10
+	c.seenmutex.RLock()
+	page := (len(c.seen) / perPage) + 1
+	c.seenmutex.RUnlock()
+	u := fmt.Sprintf("gists/%s/comments?per_page=%d&page=%d", c.id, perPage, page)
+	err := c.client.Get(u, &resp)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get comments: %w", err)
 	}
@@ -74,12 +81,14 @@ func (c *gistClient) GetNewComments() ([]string, error) {
 	msgs := []string{}
 	for _, comment := range resp {
 		found := false
+		c.seenmutex.RLock()
 		for _, id := range c.seen {
 			if comment.ID == id {
 				found = true
 				break
 			}
 		}
+		c.seenmutex.RUnlock()
 		if found {
 			continue
 		}
@@ -95,7 +104,9 @@ func (c *gistClient) GetNewComments() ([]string, error) {
 			}
 			msgs = append(msgs, msg)
 		}
+		c.seenmutex.Lock()
 		c.seen = append(c.seen, comment.ID)
+		c.seenmutex.Unlock()
 	}
 	return msgs, nil
 }
@@ -138,6 +149,8 @@ func joinChat(opts ChatOpts) error {
 	app := tview.NewApplication()
 	msgView := tview.NewTextView()
 	nicklist := tview.NewTextView()
+
+	cancel := make(chan struct{})
 
 	rw := sync.RWMutex{}
 	present := map[string]bool{}
@@ -225,6 +238,7 @@ func joinChat(opts ChatOpts) error {
 				}
 
 				gc.AddComment(fmt.Sprintf("~ vilmibm quit%s\n", quitMsg))
+				close(cancel)
 				app.Stop()
 			case "/banner":
 				banner("standard", split[1])
@@ -280,21 +294,28 @@ func joinChat(opts ChatOpts) error {
 	app.SetRoot(outerFlex, true)
 
 	gc.AddComment("LOLJOIN")
+	defer gc.AddComment("LOLPART")
 
-	go func() {
-		for true {
-			msgs, err := gc.GetNewComments()
-			if err != nil {
-				msgView.Write([]byte(fmt.Sprintf("system error: %s\n", err.Error())))
+	go func(c chan struct{}) {
+		for {
+			select {
+			case <-c:
+				break
+			default:
+				msgs, err := gc.GetNewComments()
+				if err != nil {
+					msgView.Write([]byte(fmt.Sprintf("system error: %s\n", err.Error())))
+					app.ForceDraw()
+					continue
+				}
 				app.ForceDraw()
-				continue
+
+				loadNewComments(msgs)
+
+				time.Sleep(time.Second * 4)
 			}
-
-			loadNewComments(msgs)
-
-			time.Sleep(time.Second * 4)
 		}
-	}()
+	}(cancel)
 
 	if err := app.Run(); err != nil {
 		return fmt.Errorf("tview error: %w", err)
