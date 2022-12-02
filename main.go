@@ -94,9 +94,10 @@ type ChatOpts struct {
 }
 
 func createChat(opts ChatOpts) (string, error) {
+	gistFilename := fmt.Sprintf("%s's chat room in gh", opts.Username)
 	files := map[string]gistFile{}
-	files["chat"] = gistFile{
-		Content: "lol hey",
+	files[gistFilename] = gistFile{
+		Content: "i'm using https://github.com/vilmibm/gh-chat to chat in the terminal.",
 	}
 	body, err := json.Marshal(struct {
 		Files  map[string]gistFile `json:"files"`
