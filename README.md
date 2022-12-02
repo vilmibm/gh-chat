@@ -6,17 +6,17 @@ somewhere on a list of "terrible ideas for the github cli" is "realtime chat." n
 
 ## install
 
-gh ext install vilmibm/gh-chat
+`gh ext install vilmibm/gh-chat`
 
 ## usage - create a chatroom
 
 prior to launching the new chatroom, the room ID will be printed for copy and pasting.
 
-gh chat
+`gh chat`
 
 ## usage - join a chatroom
 
-gh chat <chatroom ID>
+`gh chat <chatroom ID>`
 
 a chatroom ID looks like `b6f867cbdd5dcb3e08fca1323fae4db8` and you might see one in your GitHub notifications.
 
