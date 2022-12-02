@@ -6,6 +6,18 @@ somewhere on a list of "terrible ideas for the github cli" is "realtime chat." n
 
 <img width="911" alt="Screenshot 2022-12-02 120814" src="https://user-images.githubusercontent.com/98482/205377404-20db202d-c9d8-4ec9-a108-d7ec26d24ee3.png">
 
+## features
+
+- nick list
+- invites with push notification
+- join/part messages
+- visual bell on @ mention
+- ephemeral. deletes all messages on host exit.
+- figlet support
+- emoting
+- SMTP gateway (assuming you haven't muted email gist notifications)
+- 1337
+
 ## install
 
 `gh ext install vilmibm/gh-chat`
