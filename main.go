@@ -159,21 +159,34 @@ func joinChat(opts ChatOpts) error {
 
 			_, _, width, _ := msgView.GetRect()
 			banner := figletlib.SprintMsg(text, f, width, f.Settings(), "left")
-			msgView.Write([]byte(opts.Username + ":\n"))
-			msgView.Write([]byte(banner))
-			msgView.Write([]byte("\n"))
+			gc.AddComment("\n" + banner)
 		}
 		txt := input.GetText()
 		if strings.HasPrefix(txt, "/") {
 			split := strings.SplitN(txt, " ", 2)
 			switch split[0] {
+			case "/help":
+				lines := []string{
+					"system:",
+					"/quit (<message>)",
+					"  leave chat with an optional part message",
+					"/invite <username>",
+					"  invite a github user to the chat. they'll get a notification on github.",
+					"/banner <msg>",
+					"  render an ascii banner",
+					"/banner-font <font> <msg>",
+					"  render an ascii banner with the chosen font. try script or shadow.",
+				}
+				for _, l := range lines {
+					msgView.Write([]byte(l + "\n"))
+				}
 			case "/quit":
 				quitMsg := ""
 				if len(split) > 1 && split[1] != "" {
 					quitMsg = fmt.Sprintf(" (%s)", split[1])
 				}
 
-				msgView.Write([]byte(fmt.Sprintf("~ vilmibm quit%s\n", quitMsg)))
+				gc.AddComment(fmt.Sprintf("~ vilmibm quit%s\n", quitMsg))
 				app.Stop()
 			case "/banner":
 				banner("standard", split[1])
@@ -311,19 +324,14 @@ func _main(args []string) error {
 		if !enter {
 			return nil
 		}
-
-		return joinChat(*opts)
 	} else if len(args) == 1 {
-		switch args[0] {
-		case "check":
-			return checkForChat(*opts)
-		default:
-			opts.GistID = args[0]
-			return joinChat(*opts)
-		}
+		// TODO support check if it ever works
+		opts.GistID = args[0]
+	} else {
+		return errors.New("expected 0 or 1 arguments")
 	}
 
-	return nil
+	return joinChat(*opts)
 }
 
 func main() {
