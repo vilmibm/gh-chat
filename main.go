@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,8 +14,12 @@ import (
 	"github.com/cli/go-gh"
 	"github.com/cli/go-gh/pkg/api"
 	"github.com/gdamore/tcell/v2"
+	"github.com/lukesampson/figlet/figletlib"
 	"github.com/rivo/tview"
 )
+
+//go:embed fonts/*
+var fonts embed.FS
 
 type gistFile struct {
 	Content string `json:"content"`
@@ -139,12 +144,36 @@ func joinChat(opts ChatOpts) error {
 			return
 		}
 		defer input.SetText("")
+		banner := func(fontFile string, text string) {
+			data, err := fonts.ReadFile("fonts/" + fontFile + ".flf")
+			if err != nil {
+				msgView.Write([]byte(fmt.Sprintf("system error: %s\n", err.Error())))
+				return
+			}
+
+			f, err := figletlib.ReadFontFromBytes(data)
+			if err != nil {
+				msgView.Write([]byte(fmt.Sprintf("system error: %s\n", err.Error())))
+				return
+			}
+
+			_, _, width, _ := msgView.GetRect()
+			banner := figletlib.SprintMsg(text, f, width, f.Settings(), "left")
+			msgView.Write([]byte(opts.Username + ":\n"))
+			msgView.Write([]byte(banner))
+			msgView.Write([]byte("\n"))
+		}
 		txt := input.GetText()
 		if strings.HasPrefix(txt, "/") {
 			split := strings.SplitN(txt, " ", 2)
 			switch split[0] {
 			case "/quit":
 				app.Stop()
+			case "/banner":
+				banner("standard", split[1])
+			case "/banner-font":
+				sp := strings.SplitN(split[1], " ", 2)
+				banner(sp[0], sp[1])
 			case "/invite":
 				err := gc.AddComment(
 					fmt.Sprintf("~ hey @%s come chat ^_^ `gh ext install vilmibm/gh-chat && gh chat %s`", split[1], gistID))
