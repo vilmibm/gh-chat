@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -208,7 +209,32 @@ func joinChat(opts ChatOpts) error {
 
 func checkForChat(opts ChatOpts) error {
 	// TODO
-	return nil
+	// the purpose of this function is to look for a recent notification inviting
+	// opts.Username to a chat and then reporting on that fact with instructions
+	// on how to join. This could be called from a .bashrc to alert a user that a
+	// chat is waiting for them.
+
+	// oooof gist notifications are filtered out of the notifications API :( :(
+
+	/*
+
+		result := []struct {
+			Subject struct {
+				Title string
+			}
+		}{}
+
+		err := opts.Client.Get("notifications", &result)
+		if err != nil {
+			return fmt.Errorf("failed to get notifications: %w", err)
+		}
+
+		for _, n := range result {
+
+		}
+	*/
+
+	return errors.New("tragically, the github notifications api filters out gist notifications")
 }
 
 func _main(args []string) error {
