@@ -168,6 +168,12 @@ func joinChat(opts ChatOpts) error {
 			split := strings.SplitN(txt, " ", 2)
 			switch split[0] {
 			case "/quit":
+				quitMsg := ""
+				if len(split) > 1 && split[1] != "" {
+					quitMsg = fmt.Sprintf(" (%s)", split[1])
+				}
+
+				msgView.Write([]byte(fmt.Sprintf("~ vilmibm quit%s\n", quitMsg)))
 				app.Stop()
 			case "/banner":
 				banner("standard", split[1])
