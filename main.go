@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/AlecAivazis/survey/v2"
@@ -82,11 +83,18 @@ func (c *gistClient) GetNewComments() ([]string, error) {
 		if found {
 			continue
 		}
-		msg := comment.Body + "\n"
-		if !strings.HasPrefix(msg, "~") {
-			msg = fmt.Sprintf("%s: %s", comment.User.Login, msg)
+		switch comment.Body {
+		case "LOLJOIN":
+			msgs = append(msgs, "LOLJOIN "+comment.User.Login)
+		case "LOLPART":
+			msgs = append(msgs, "LOLPART "+comment.User.Login)
+		default:
+			msg := comment.Body + "\n"
+			if !strings.HasPrefix(msg, "~") {
+				msg = fmt.Sprintf("%s: %s", comment.User.Login, msg)
+			}
+			msgs = append(msgs, msg)
 		}
-		msgs = append(msgs, msg)
 		c.seen = append(c.seen, comment.ID)
 	}
 	return msgs, nil
@@ -127,15 +135,45 @@ func createChat(opts ChatOpts) (string, error) {
 func joinChat(opts ChatOpts) error {
 	gistID := opts.GistID
 	gc := newGistClient(opts.Client, gistID)
-
 	app := tview.NewApplication()
-
 	msgView := tview.NewTextView()
+	nicklist := tview.NewTextView()
+
+	rw := sync.RWMutex{}
+	present := map[string]bool{}
 
 	loadNewComments := func(msgs []string) {
 		for _, m := range msgs {
-			msgView.Write([]byte(m))
+			if strings.HasPrefix(m, "LOLJOIN") {
+				split := strings.Split(m, " ")
+				if len(split) > 1 {
+					rw.Lock()
+					present[split[1]] = true
+					rw.Unlock()
+				}
+				msgView.Write([]byte(fmt.Sprintf("whoa %s has joined!\n", split[1])))
+			} else if strings.HasPrefix(m, "LOLPART") {
+				split := strings.Split(m, " ")
+				if len(split) > 1 {
+					rw.Lock()
+					present[split[1]] = false
+					rw.Unlock()
+				}
+				msgView.Write([]byte(fmt.Sprintf("aw, %s left ;_;\n", split[1])))
+			} else {
+				msgView.Write([]byte(m))
+			}
 		}
+		presentTxt := ""
+		rw.RLock()
+		for k, v := range present {
+			if v {
+				presentTxt += k + "\n"
+			}
+		}
+		rw.RUnlock()
+		nicklist.SetText(presentTxt)
+		msgView.ScrollToEnd()
 		app.ForceDraw()
 	}
 	input := tview.NewInputField()
@@ -194,6 +232,7 @@ func joinChat(opts ChatOpts) error {
 				sp := strings.SplitN(split[1], " ", 2)
 				banner(sp[0], sp[1])
 			case "/invite":
+				// TODO support stripping leading @ since i keep doing it
 				err := gc.AddComment(
 					fmt.Sprintf("~ hey @%s come chat ^_^ `gh ext install vilmibm/gh-chat && gh chat %s`", split[1], gistID))
 				if err != nil {
@@ -228,12 +267,19 @@ func joinChat(opts ChatOpts) error {
 		go loadNewComments(msgs)
 	})
 
-	flex := tview.NewFlex()
-	flex.SetDirection(tview.FlexRow)
-	flex.AddItem(msgView, 0, 10, false)
-	flex.AddItem(input, 1, 1, true)
+	innerFlex := tview.NewFlex()
+	innerFlex.SetDirection(tview.FlexColumn)
+	innerFlex.AddItem(msgView, 0, 5, false)
+	innerFlex.AddItem(nicklist, 0, 1, false)
 
-	app.SetRoot(flex, true)
+	outerFlex := tview.NewFlex()
+	outerFlex.SetDirection(tview.FlexRow)
+	outerFlex.AddItem(innerFlex, 0, 10, false)
+	outerFlex.AddItem(input, 1, 1, true)
+
+	app.SetRoot(outerFlex, true)
+
+	gc.AddComment("LOLJOIN")
 
 	go func() {
 		for true {
