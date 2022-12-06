@@ -15,6 +15,7 @@ somewhere on a list of "terrible ideas for the github cli" is "realtime chat." n
 - ephemeral. deletes all messages on host exit.
 - figlet support
 - emoting
+- flood protection (thanks github api)
 - SMTP gateway (assuming you haven't muted email gist notifications)
 - 1337
 
